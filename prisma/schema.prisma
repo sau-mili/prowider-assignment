@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Service {
+  id    Int    @id
+  name  String
+  leads Lead[]
+}
+
+model Provider {
+  id             Int          @id
+  name           String
+  quota          Int          @default(10)
+  lastAssignedAt DateTime     @default(now())
+  assignments    Assignment[]
+}
+
+model Lead {
+  id          Int          @id @default(autoincrement())
+  name        String
+  phone       String
+  city        String
+  description String
+  serviceId   Int
+  service     Service      @relation(fields: [serviceId], references: [id])
+  assignments Assignment[]
+  createdAt   DateTime     @default(now())
+
+  // Core Rule: Same phone cannot create lead for the same service
+  @@unique([phone, serviceId]) 
+}
+
+model Assignment {
+  id         Int      @id @default(autoincrement())
+  leadId     Int
+  providerId Int
+  lead       Lead     @relation(fields: [leadId], references: [id])
+  provider   Provider @relation(fields: [providerId], references: [id])
+  assignedAt DateTime @default(now())
+
+  @@unique([leadId, providerId])
+}
+
+model WebhookEvent {
+  id        String   @id // Ensures idempotency
+  createdAt DateTime @default(now())
+}
