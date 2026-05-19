@@ -1,39 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Prowider Mini Lead Distribution System
 
-## Getting Started
+A full-stack lead generation and distribution system designed to handle real-world backend challenges including concurrent requests, data integrity, and strict business rules. 
 
-First, run the development server:
+## 🚀 Live Demo
+**Live URL:** [Insert your Vercel URL here]
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠 Tech Stack
+* **Frontend:** Next.js 14 (App Router), React, Tailwind CSS v3
+* **Backend:** Next.js API Routes (Node.js)
+* **Database:** PostgreSQL (hosted on Supabase)
+* **ORM:** Prisma
+* **Real-time Updates:** SWR (HTTP Polling)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🧠 Architecture & Implementation Details
 
-## Learn More
+### 1. Lead Allocation Algorithm
+The system distributes leads based on a strict two-step process:
+1. **Mandatory Assignment:** The system first identifies the required providers based on the `serviceId` mapping. It checks that these providers have a `quota > 0`.
+2. **Fair Round-Robin (Pool Allocation):** To fill the remaining slots (up to exactly 3 total), the system queries the remaining eligible providers in the service's pool. 
+   * To ensure fairness and persistence across server restarts, the query filters for providers with `quota > 0` and orders them by `lastAssignedAt ASC`. 
+   * This guarantees that the provider who has waited the longest since their last lead always receives priority.
 
-To learn more about Next.js, take a look at the following resources:
+### 2. Concurrency Handling
+When multiple leads are generated simultaneously (e.g., via the "Generate 10 Leads Instantly" testing tool), the system prevents race conditions and quota violations using database-level controls:
+* **ACID Transactions:** The entire allocation process (duplicate checking, provider selection, lead creation, and assignments) is wrapped in a single PostgreSQL `$transaction`. If any step fails, the entire transaction rolls back cleanly.
+* **Atomic Operations:** Quotas are decremented using database-level atomic operations (Prisma's `decrement: 1`) rather than reading the value into application memory and subtracting. This ensures that concurrent requests cannot accidentally push a provider's quota below zero.
+* **Unique Constraints:** The rule preventing the same phone number from requesting the same service twice is enforced via a composite unique constraint `@@unique([phone, serviceId])` at the database schema level.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Webhook Idempotency
+To handle simulated payment webhooks reliably, the system uses an idempotent design:
+* The webhook payload must include a unique `eventId`.
+* Before resetting a provider's quota, the system attempts to insert this `eventId` into a dedicated `WebhookEvent` table.
+* The `id` column in this table is the primary key. If a duplicate webhook is received (e.g., network retry), PostgreSQL throws a unique constraint violation (`P2002`).
+* The API catches this specific error, skips the quota reset, and returns a `200 OK` to satisfy the payment gateway without duplicating the business logic.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🚦 System Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+* **`/request-service` (Customer Form):** Public interface for lead submission with database-enforced duplicate prevention.
+* **`/dashboard` (Provider Dashboard):** Real-time dashboard that automatically polls the database and updates provider quotas and assigned leads without manual page refreshes. Visual indicators show remaining capacity.
+* **`/test-tools` (Evaluation Panel):** Specialized tools to test idempotency, trigger simultaneous load tests, and manually fire webhooks.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
 
+## 💻 Local Setup Instructions
 
-kWBcb2XfWRDmAs8Y
+1. **Clone the repository**
+   ```bash
+   git clone <your-github-repo-url>
+   cd prowider-assignment
